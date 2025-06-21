@@ -1,0 +1,205 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String               @id @default(uuid())
+  email              String               @unique
+  passwordHash       String
+  firstName          String
+  lastName           String
+  phoneNumber        String?
+  profileImageUrl    String?
+  timezone           String               @default("UTC")
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  bandMemberships    BandMembership[]
+  createdBands       Band[]               @relation("BandCreator")
+  regularAvailability UserAvailability[]
+  exceptions         UserUnavailability[]
+  rehearsalAttendance RehearsalAttendance[]
+  createdRehearsals  Rehearsal[]          @relation("RehearsalCreator")
+  createdSongs       Song[]               @relation("SongCreator")
+  uploadedResources  Resource[]           @relation("ResourceUploader")
+  notifications      Notification[]
+}
+
+model Band {
+  id              String           @id @default(uuid())
+  name            String
+  description     String?
+  logoUrl         String?
+  createdById     String
+  createdBy       User             @relation("BandCreator", fields: [createdById], references: [id])
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  memberships     BandMembership[]
+  rehearsals      Rehearsal[]
+  songs           Song[]
+  resources       Resource[]
+}
+
+model BandMembership {
+  id        String     @id @default(uuid())
+  userId    String
+  bandId    String
+  role      MemberRole @default(MEMBER)
+  status    MembershipStatus @default(PENDING)
+  joinedAt  DateTime   @default(now())
+  user      User       @relation(fields: [userId], references: [id])
+  band      Band       @relation(fields: [bandId], references: [id])
+
+  @@unique([userId, bandId])
+}
+
+enum MemberRole {
+  ADMIN
+  MANAGER
+  MEMBER
+  GUEST
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
+model UserAvailability {
+  id         String   @id @default(uuid())
+  userId     String
+  dayOfWeek  Int      // 0-6 (Sunday-Saturday)
+  startTime  String   // Format: "HH:MM" in 24h
+  endTime    String   // Format: "HH:MM" in 24h
+  recurring  Boolean  @default(true)
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model UserUnavailability {
+  id           String   @id @default(uuid())
+  userId       String
+  startDatetime DateTime
+  endDatetime   DateTime
+  reason       String?
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model Rehearsal {
+  id               String      @id @default(uuid())
+  bandId           String
+  title            String
+  description      String?
+  location         String
+  startDatetime    DateTime
+  endDatetime      DateTime
+  createdById      String
+  recurringPattern Json?       // For recurring rehearsals, JSON with pattern
+  status           RehearsalStatus @default(SCHEDULED)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  band             Band        @relation(fields: [bandId], references: [id])
+  createdBy        User        @relation("RehearsalCreator", fields: [createdById], references: [id])
+  attendance       RehearsalAttendance[]
+  songs            RehearsalSong[]
+}
+
+enum RehearsalStatus {
+  SCHEDULED
+  CANCELLED
+  COMPLETED
+}
+
+model RehearsalAttendance {
+  id           String           @id @default(uuid())
+  rehearsalId  String
+  userId       String
+  status       AttendanceStatus @default(NO_RESPONSE)
+  responseTime DateTime?
+  rehearsal    Rehearsal        @relation(fields: [rehearsalId], references: [id])
+  user         User             @relation(fields: [userId], references: [id])
+
+  @@unique([rehearsalId, userId])
+}
+
+enum AttendanceStatus {
+  ATTENDING
+  NOT_ATTENDING
+  TENTATIVE
+  NO_RESPONSE
+}
+
+model Song {
+  id            String         @id @default(uuid())
+  bandId        String
+  title         String
+  artist        String?
+  key           String?
+  tempo         Int?
+  durationSeconds Int?
+  notes         String?
+  createdById   String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  band          Band           @relation(fields: [bandId], references: [id])
+  createdBy     User           @relation("SongCreator", fields: [createdById], references: [id])
+  rehearsals    RehearsalSong[]
+  resources     Resource[]
+}
+
+model RehearsalSong {
+  id          String    @id @default(uuid())
+  rehearsalId String
+  songId      String
+  orderIndex  Int
+  notes       String?
+  rehearsal   Rehearsal @relation(fields: [rehearsalId], references: [id])
+  song        Song      @relation(fields: [songId], references: [id])
+
+  @@unique([rehearsalId, songId])
+}
+
+model Resource {
+  id          String    @id @default(uuid())
+  bandId      String
+  songId      String?
+  title       String
+  description String?
+  fileUrl     String
+  fileType    String
+  uploadedById String
+  uploadedAt  DateTime  @default(now())
+  band        Band      @relation(fields: [bandId], references: [id])
+  song        Song?     @relation(fields: [songId], references: [id])
+  uploadedBy  User      @relation("ResourceUploader", fields: [uploadedById], references: [id])
+}
+
+model Notification {
+  id         String    @id @default(uuid())
+  userId     String
+  title      String
+  message    String
+  type       NotificationType
+  relatedId  String?   // Can be rehearsalId, songId, etc.
+  read       Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id])
+}
+
+enum NotificationType {
+  REHEARSAL_CREATED
+  REHEARSAL_UPDATED
+  REHEARSAL_CANCELLED
+  REHEARSAL_REMINDER
+  BAND_INVITATION
+  SONG_ADDED
+  RESOURCE_SHARED
+  GENERAL
+}
